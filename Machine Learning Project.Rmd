@@ -1,0 +1,109 @@
+---
+title: "Machine Learning Project"
+author: "Chris Zerhusen"
+date: "October 24, 2015"
+output: html_document
+---
+
+## Overview
+
+This project uses data acquired from accelerometers worn on the bodies of six subjects
+while performing an exercise.  Subjects wore accelerometers on their belt, glove, 
+upper-arm band, and the dumbell they were using while performing the same exercise in
+five different ways, once correctly and then in four distinct incorrect ways.  This data
+was used to run a random forest algorithm to create a model that could predict which
+of the five ways the exercise was being performed from the available data.  The model
+created has an out of sample error rate of 0.42%.
+
+
+
+## Data Processing
+
+The training and testing sets were loaded into R.  The summary features included in
+the training set are not useful for our prediction, since those variables are all NA
+in the test set, so they are removed from the set.  Additionally, the time stamp variables
+and index variable aren't helpful for predicting the test set since it only includes
+individual points and no time series chunks.  This leaves 53 variables to train the
+prediction algorith with.
+
+```{r}
+# load data
+
+training <- read.csv("https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv")
+testing <- read.csv("https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv")
+
+# Get rid of summary features
+kurtosis <- grep("kurtosis", colnames(training))
+        ctraining <- training[,-kurtosis]
+skewness <- grep("skewness", colnames(ctraining))
+        ctraining <- ctraining[,-skewness]
+min <- grep("min", colnames(ctraining))
+        ctraining <- ctraining[,-min]
+max <- grep("max", colnames(ctraining))
+        ctraining <- ctraining[,-max]
+avg <- grep("avg", colnames(ctraining))
+        ctraining <- ctraining[,-avg]
+amplitude <- grep("amplitude", colnames(ctraining))
+        ctraining <- ctraining[,-amplitude]
+var <- grep("var", colnames(ctraining))
+        ctraining <- ctraining[,-var]
+stddev <- grep("stddev", colnames(ctraining))
+        ctraining <- ctraining[,-stddev]
+
+# Get rid of timestamps (not useful for predicting test set) and window variables 
+        
+time <- grep("timestamp|window", colnames(ctraining))
+        ctraining <- ctraining[,-time]
+        
+# Get rid of index variable
+        
+ctraining <- ctraining[,-1]
+```
+
+## Model Creation
+
+The original training set was then split into a sub-training and sub-test set in order
+to test the out of sample error rate of the model.  
+
+```{r}
+library(randomForest)
+library(caret)
+        
+        
+set.seed(239757)
+insub <- createDataPartition(ctraining$classe, p=.7, list=FALSE)
+subtrain <- ctraining[insub,]
+subtest <- ctraining[-insub,]
+```
+
+A random forest algorith was selected because of their high level of accuracy at 
+predicting categorical variables.  
+
+```{r}
+f1 <- randomForest(classe~., data=subtrain, importance=TRUE)
+f1
+```
+
+The function returns an out of bag error estimate of 0.51%, a remarkably low rate.
+Overfitting is a serious concern with random forrests, so the sub-test set was used to
+validate this low rate.
+
+```{r}
+confusionMatrix(predict(f1, newdata=subtest), subtest$classe)
+```
+
+We see that the error rate in our sub-test set is actually 0.42%, very similar to the 
+out of bag error estimate of 0.51% that the random forest model gave us.  
+
+I wondered whether knowing which person was performing the tests (the user_name variable)
+was a large component of why the model was so accurate, so I created another random
+forest without this variable in it.  
+
+```{r}
+f2 <- randomForest(classe~., data=subtrain[,-1], importance=TRUE)
+f2
+```
+
+The results were roughly the same, so it seems that
+knowing who was doing the exercise was not highly important, and so this model may be
+useful when used on new subjects.
